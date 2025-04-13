@@ -1,0 +1,13 @@
+services:
+  mcp-server:
+    build: .
+    ports:
+      - "7500:7500"
+    environment:
+      - HOST=${HOST:-0.0.0.0}
+      - PORT=${PORT:-7500}
+      - API_KEY=${API_KEY}
+      - OTHER_SECRET=${OTHER_SECRET}
+    volumes:
+      - ./src:/app/src
+    # For development, we mount the source code for hot reloading
