@@ -10,7 +10,7 @@ The server is designed to be:
 - **Simple**: Minimal boilerplate and dependencies
 - **Secure**: Proper credential management out of the box
 - **Containerized**: Ready for Docker deployment
-- **Performant**: Using Starlette and Uvicorn for high-performance HTTP serving
+- **Performant**: Using FastMCP and Uvicorn for high-performance HTTP serving
 
 ## Architecture
 
@@ -20,19 +20,20 @@ The project uses the following key packages:
 
 1. **MCP SDK**: The Python implementation of the Model Context Protocol
    - `mcp`: Core MCP functionality
+   - `mcp.server.fastmcp`: High-level FastMCP framework
 
-2. **Web Framework**: Starlette
-   - Lightweight ASGI framework
-   - Already used in the MCP SDK's SSE implementation
+2. **Web Framework**: FastMCP's built-in ASGI support
+   - Leverages Starlette under the hood
+   - Simplifies server setup and routing
    - Excellent performance characteristics
 
 3. **ASGI Server**: Uvicorn
    - High-performance ASGI server
-   - Works seamlessly with Starlette
+   - Works seamlessly with FastMCP
    - Well-suited for containerized environments
 
-4. **SSE Implementation**: sse-starlette
-   - Already integrated with the MCP SDK
+4. **SSE Implementation**: MCP SDK's built-in SSE transport
+   - Integrated with FastMCP
    - Provides Server-Sent Events functionality
 
 5. **Configuration Management**: pydantic-settings
@@ -55,9 +56,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.6.0",
-    "starlette>=0.46.2",
     "uvicorn>=0.34.1",
-    "sse-starlette>=2.2.1",
     "pydantic-settings>=2.8.1",
     "httpx>=0.28.1",
 ]
@@ -111,12 +110,14 @@ basic-mcp-server/
 ├── docker-compose.yml    # For local development
 ├── pyproject.toml        # Dependencies and metadata
 ├── README.md             # This file
+├── readme_fastmcp.md     # Documentation on FastMCP vs low-level Server
+├── design_decisions.md   # Project design decisions log
 └── src/
     ├── __init__.py
     ├── main.py           # Entry point
     ├── config.py         # Environment & configuration management
-    ├── server.py         # MCP server implementation
-    └── tools/            # Tool implementations
+    ├── server.py         # MCP server implementation using FastMCP
+    └── tools/            # Tool implementations (alternative organization)
         ├── __init__.py
         └── example.py    # Example tool
 ```
@@ -135,94 +136,87 @@ class Settings(BaseSettings):
     
     # Add your API keys and credentials here
     api_key: str
+    other_secret: str = ""  # Optional, has default empty value
     
-    # Optional: Add database credentials, etc.
-    
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # Configure settings to load from .env file
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
 
+# Create a settings instance for importing in other modules
 settings = Settings()
 ```
 
 ### Server Implementation (`src/server.py`)
 
 ```python
-from mcp.server.lowlevel import Server
-from mcp.server.sse import SseServerTransport
-import mcp.types as types
+from mcp.server.fastmcp import FastMCP
 
 def create_mcp_server():
-    # Create an MCP server instance
-    server = Server("basic-mcp-server")
+    """
+    Create and configure an MCP server instance using FastMCP.
     
-    # Add your tools here
-    @server.list_tools()
-    async def list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name="example",
-                description="An example tool",
-                inputSchema={
-                    "type": "object",
-                    "required": ["input"],
-                    "properties": {
-                        "input": {
-                            "type": "string",
-                            "description": "Input string",
-                        }
-                    },
-                },
-            )
-        ]
+    Returns:
+        FastMCP: A configured FastMCP server instance
+    """
+    # Create a FastMCP server instance with a unique name
+    mcp = FastMCP("basic-mcp-server")
     
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
-        if name != "example":
-            raise ValueError(f"Unknown tool: {name}")
-        
-        input_value = arguments.get("input", "")
-        return [types.TextContent(type="text", text=f"Processed: {input_value}")]
+    # Add an example tool using the simpler decorator syntax
+    @mcp.tool()
+    def example(input: str) -> str:
+        """An example tool that processes input text"""
+        return f"Processed: {input}"
     
-    return server
+    # You can add more tools, resources, and prompts here
+    
+    return mcp
 ```
 
 ### Main Entry Point (`src/main.py`)
 
 ```python
-import uvicorn
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
+import logging
+import sys
 
-from mcp.server.sse import SseServerTransport
 from .config import settings
 from .server import create_mcp_server
 
-# Create the MCP server
-mcp_server = create_mcp_server()
-
-# Create SSE transport
-sse = SseServerTransport("/messages/")
-
-# SSE handler for clients to connect
-async def handle_sse(request):
-    async with sse.connect_sse(
-        request.scope, request.receive, request._send
-    ) as streams:
-        await mcp_server.run(
-            streams[0], streams[1], mcp_server.create_initialization_options()
-        )
-
-# Create Starlette app
-app = Starlette(
-    debug=True,
-    routes=[
-        Route("/sse", endpoint=handle_sse),
-        Mount("/messages/", app=sse.handle_post_message),
-    ],
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
+logger = logging.getLogger(__name__)
+
+def start():
+    """Start the MCP server using FastMCP's built-in functionality."""
+    logger.info(f"Starting MCP server on {settings.host}:{settings.port}")
+    
+    # Create the MCP server
+    mcp_server = create_mcp_server()
+    
+    # Configure server settings
+    mcp_server.settings.host = settings.host
+    mcp_server.settings.port = settings.port
+    mcp_server.settings.debug = True
+    mcp_server.settings.log_level = "INFO"
+    
+    # Run the server with SSE transport
+    mcp_server.run("sse")
+
+# Alternative approach using the FastMCP ASGI application
+def create_app():
+    """Create an ASGI application for use with an external ASGI server."""
+    mcp_server = create_mcp_server()
+    mcp_server.settings.debug = True
+    return mcp_server.sse_app()
 
 if __name__ == "__main__":
-    print(f"Starting MCP server on {settings.host}:{settings.port}")
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    start()
 ```
 
 ## Docker Implementation
@@ -270,6 +264,7 @@ services:
       - "7500:7500"
     environment:
       - API_KEY=${API_KEY}
+      - OTHER_SECRET=${OTHER_SECRET}
     volumes:
       - ./src:/app/src
 ```
@@ -407,6 +402,10 @@ If you encounter issues:
 ## Reference Implementation
 
 This project is based on the Model Context Protocol (MCP) Python SDK. For more details on the MCP specification and SDK, refer to the [original project README](https://github.com/modelcontextprotocol/python-sdk/blob/main/README.md).
+
+## FastMCP vs Low-Level Server
+
+This project has been migrated from using the low-level `Server` class to using the more ergonomic `FastMCP` approach. For details on the differences and benefits, see [readme_fastmcp.md](readme_fastmcp.md).
 
 ## Next Steps
 
