@@ -307,16 +307,102 @@ docker compose up
 
 ## Testing Your MCP Server
 
-Once running, you can test your server by:
+### Manual Testing
 
-1. Connecting to the SSE endpoint at `http://localhost:7500/sse`
-2. Sending messages to `http://localhost:7500/messages/?session_id=<session_id>`
+#### Using the MCP SDK CLI
 
-The MCP SDK includes tools for testing your server:
+If you have the MCP SDK CLI installed, you can use it to test your server:
 
 ```bash
 mcp dev http://localhost:7500/sse
 ```
+
+#### Using Claude
+
+To test with Claude:
+
+1. Update Claude's MCP settings file with:
+   ```json
+   {
+     "mcpServers": {
+       "basic-mcp-server": {
+         "url": "http://localhost:7500/sse",
+         "disabled": false,
+         "autoApprove": ["example"]
+       }
+     }
+   }
+   ```
+
+2. In Claude, use the tool:
+   ```
+   <use_mcp_tool>
+   <server_name>basic-mcp-server</server_name>
+   <tool_name>example</tool_name>
+   <arguments>
+   {
+     "input": "Hello MCP World!"
+   }
+   </arguments>
+   </use_mcp_tool>
+   ```
+
+3. You should receive: "Processed: Hello MCP World!"
+
+#### Using HTTP Requests
+
+You can also test your server with HTTP requests:
+
+1. Connect to the SSE endpoint:
+   ```bash
+   curl -N http://localhost:7500/sse
+   ```
+
+2. In another terminal, send a message to the server:
+   ```bash
+   curl -X POST -H "Content-Type: application/json" -d '{"type":"initialize","requestId":"test-123","content":{"clientInfo":{"clientType":"test","clientVersion":"1.0.0"},"capabilities":{"receiveText":true,"receiveImage":false}}}' http://localhost:7500/messages/?session_id=test-session-id
+   ```
+
+### Automated End-to-End Testing
+
+We provide automated tests that verify the MCP server works correctly when deployed as a container:
+
+1. Install test dependencies:
+   ```bash
+   cd tests/e2e
+   pip install -r requirements.txt
+   ```
+
+2. Run the test:
+   ```bash
+   python mcp_container_test.py
+   ```
+
+The test script will:
+- Build and start a Docker container with the MCP server
+- Test HTTP connectivity to the server
+- Test the MCP protocol (initialization, tool listing)
+- Test the example tool functionality
+- Clean up all resources when done
+
+See `tests/e2e/README.md` for more details on the end-to-end tests.
+
+### Troubleshooting
+
+If you encounter issues:
+
+1. **Connection refused:**
+   - Ensure the container is running: `docker ps | grep mcp-server`
+   - Verify port mapping: `docker port [container-id]`
+
+2. **"Not connected" error in Claude:**
+   - Ensure the URL includes the `/sse` path: `http://localhost:7500/sse`
+   - Check container logs: `docker logs [container-id]`
+   - Try restarting the VSCode window
+
+3. **Timeout or no response:**
+   - Examine server logs for errors
+   - Check if another service is using port 7500
 
 ## Reference Implementation
 
