@@ -2,6 +2,37 @@
 
 This document logs important design decisions made during the development of BasicMcpServer.
 
+## 2025-04-15: Docker Build Issues on macOS M4
+
+### Decision
+
+We've decided to build the Docker image on Linux machines rather than on macOS M4 due to persistent hash sum mismatch errors.
+
+### Context
+
+When attempting to build the Docker image on macOS with M4 Apple Silicon, we encountered hash sum mismatch errors during the apt-get update process. This issue appears to be specific to the latest M4 architecture and Docker's handling of ARM64 builds on this platform.
+
+### Reasoning
+
+Docker on Apple Silicon (especially the newer M4 chips) can experience compatibility issues when building Linux-based images. The specific "hash sum mismatch" error occurs because:
+
+1. The package index checksums don't match expected values during the apt-get update process
+2. This is likely due to network or caching issues specific to Docker Desktop's implementation on the latest macOS/M4 hardware
+3. Building on native Linux environments avoids these architecture-specific issues entirely
+
+### Implementation Notes
+
+To circumvent this issue:
+1. We've restructured our Docker setup into a dedicated docker/ directory 
+2. Code is pushed to the remote repository for building on Linux machines
+3. This approach ensures consistent builds without the platform-specific errors
+
+### References
+
+- This is a known class of issues with Docker on Apple Silicon, similar to issues documented in:
+  - Docker Desktop GitHub issues repository (https://github.com/docker/for-mac/issues)
+  - Various apt-related issues when building containers on macOS
+
 ## 2025-04-15: Separation of Docker Containerization from Application Functionality
 
 ### Decision
