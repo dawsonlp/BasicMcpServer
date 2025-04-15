@@ -2,10 +2,10 @@ services:
   mcp-server:
     build: .
     ports:
-      - "7500:7500"
+      - "7501:7501"
     environment:
       - HOST=${HOST:-0.0.0.0}
-      - PORT=${PORT:-7500}
+      - PORT=${PORT:-7501}
       - API_KEY=${API_KEY}
       - OTHER_SECRET=${OTHER_SECRET}
     volumes:

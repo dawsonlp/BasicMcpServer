@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     
     # Server settings
     host: str = "0.0.0.0"
-    port: int = 7500
+    port: int = 7501
     
     # Add your API keys and credentials here
     api_key: str
