@@ -10,7 +10,7 @@ The server is designed to be:
 - **Simple**: Minimal boilerplate and dependencies
 - **Secure**: Proper credential management out of the box
 - **Containerized**: Ready for Docker deployment
-- **Performant**: Using Starlette and Uvicorn for high-performance HTTP serving
+- **Performant**: Using FastMCP and Uvicorn for high-performance HTTP serving
 
 ## Architecture
 
@@ -20,19 +20,20 @@ The project uses the following key packages:
 
 1. **MCP SDK**: The Python implementation of the Model Context Protocol
    - `mcp`: Core MCP functionality
+   - `mcp.server.fastmcp`: High-level FastMCP framework
 
-2. **Web Framework**: Starlette
-   - Lightweight ASGI framework
-   - Already used in the MCP SDK's SSE implementation
+2. **Web Framework**: FastMCP's built-in ASGI support
+   - Leverages Starlette under the hood
+   - Simplifies server setup and routing
    - Excellent performance characteristics
 
 3. **ASGI Server**: Uvicorn
    - High-performance ASGI server
-   - Works seamlessly with Starlette
+   - Works seamlessly with FastMCP
    - Well-suited for containerized environments
 
-4. **SSE Implementation**: sse-starlette
-   - Already integrated with the MCP SDK
+4. **SSE Implementation**: MCP SDK's built-in SSE transport
+   - Integrated with FastMCP
    - Provides Server-Sent Events functionality
 
 5. **Configuration Management**: pydantic-settings
@@ -55,9 +56,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "mcp>=1.6.0",
-    "starlette>=0.46.2",
     "uvicorn>=0.34.1",
-    "sse-starlette>=2.2.1",
     "pydantic-settings>=2.8.1",
     "httpx>=0.28.1",
 ]
@@ -105,18 +104,24 @@ To ensure credentials are never committed to version control:
 ```
 basic-mcp-server/
 ├── .gitignore            # Includes .env* patterns
-├── .dockerignore         # Also excludes .env files
 ├── .env.example          # Template with dummy values
-├── Dockerfile            # Container definition
-├── docker-compose.yml    # For local development
 ├── pyproject.toml        # Dependencies and metadata
 ├── README.md             # This file
+├── readme_fastmcp.md     # Documentation on FastMCP vs low-level Server
+├── design_decisions.md   # Project design decisions log
+├── docker/               # Docker containerization
+│   ├── Dockerfile        # Multi-stage build with Python 3.13
+│   ├── .dockerignore     # Files excluded from build context
+│   ├── README.md         # Docker-specific documentation
+│   └── scripts/          # Helper scripts
+│       ├── entrypoint.sh # Container startup script
+│       └── run.sh        # Script to replace docker-compose
 └── src/
     ├── __init__.py
     ├── main.py           # Entry point
     ├── config.py         # Environment & configuration management
-    ├── server.py         # MCP server implementation
-    └── tools/            # Tool implementations
+    ├── server.py         # MCP server implementation using FastMCP
+    └── tools/            # Tool implementations (alternative organization)
         ├── __init__.py
         └── example.py    # Example tool
 ```
@@ -135,144 +140,194 @@ class Settings(BaseSettings):
     
     # Add your API keys and credentials here
     api_key: str
+    other_secret: str = ""  # Optional, has default empty value
     
-    # Optional: Add database credentials, etc.
-    
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+    # Configure settings to load from .env file
+    model_config = SettingsConfigDict(
+        env_file=".env", 
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
 
+# Create a settings instance for importing in other modules
 settings = Settings()
 ```
 
 ### Server Implementation (`src/server.py`)
 
 ```python
-from mcp.server.lowlevel import Server
-from mcp.server.sse import SseServerTransport
-import mcp.types as types
+from mcp.server.fastmcp import FastMCP
 
 def create_mcp_server():
-    # Create an MCP server instance
-    server = Server("basic-mcp-server")
+    """
+    Create and configure an MCP server instance using FastMCP.
     
-    # Add your tools here
-    @server.list_tools()
-    async def list_tools() -> list[types.Tool]:
-        return [
-            types.Tool(
-                name="example",
-                description="An example tool",
-                inputSchema={
-                    "type": "object",
-                    "required": ["input"],
-                    "properties": {
-                        "input": {
-                            "type": "string",
-                            "description": "Input string",
-                        }
-                    },
-                },
-            )
-        ]
+    Returns:
+        FastMCP: A configured FastMCP server instance
+    """
+    # Create a FastMCP server instance with a unique name
+    mcp = FastMCP("basic-mcp-server")
     
-    @server.call_tool()
-    async def call_tool(name: str, arguments: dict) -> list[types.TextContent]:
-        if name != "example":
-            raise ValueError(f"Unknown tool: {name}")
-        
-        input_value = arguments.get("input", "")
-        return [types.TextContent(type="text", text=f"Processed: {input_value}")]
+    # Add an example tool using the simpler decorator syntax
+    @mcp.tool()
+    def example(input: str) -> str:
+        """An example tool that processes input text"""
+        return f"Processed: {input}"
     
-    return server
+    # You can add more tools, resources, and prompts here
+    
+    return mcp
 ```
 
 ### Main Entry Point (`src/main.py`)
 
 ```python
-import uvicorn
-from starlette.applications import Starlette
-from starlette.routing import Mount, Route
+import logging
+import sys
 
-from mcp.server.sse import SseServerTransport
 from .config import settings
 from .server import create_mcp_server
 
-# Create the MCP server
-mcp_server = create_mcp_server()
-
-# Create SSE transport
-sse = SseServerTransport("/messages/")
-
-# SSE handler for clients to connect
-async def handle_sse(request):
-    async with sse.connect_sse(
-        request.scope, request.receive, request._send
-    ) as streams:
-        await mcp_server.run(
-            streams[0], streams[1], mcp_server.create_initialization_options()
-        )
-
-# Create Starlette app
-app = Starlette(
-    debug=True,
-    routes=[
-        Route("/sse", endpoint=handle_sse),
-        Mount("/messages/", app=sse.handle_post_message),
-    ],
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
+logger = logging.getLogger(__name__)
+
+def start():
+    """Start the MCP server using FastMCP's built-in functionality."""
+    logger.info(f"Starting MCP server on {settings.host}:{settings.port}")
+    
+    # Create the MCP server
+    mcp_server = create_mcp_server()
+    
+    # Configure server settings
+    mcp_server.settings.host = settings.host
+    mcp_server.settings.port = settings.port
+    mcp_server.settings.debug = True
+    mcp_server.settings.log_level = "INFO"
+    
+    # Run the server with SSE transport
+    mcp_server.run("sse")
+
+# Alternative approach using the FastMCP ASGI application
+def create_app():
+    """Create an ASGI application for use with an external ASGI server."""
+    mcp_server = create_mcp_server()
+    mcp_server.settings.debug = True
+    return mcp_server.sse_app()
 
 if __name__ == "__main__":
-    print(f"Starting MCP server on {settings.host}:{settings.port}")
-    uvicorn.run(app, host=settings.host, port=settings.port)
+    start()
 ```
 
 ## Docker Implementation
 
-### Dockerfile
+We've separated Docker containerization concerns from application functionality to improve maintainability and follow best practices:
+
+### Directory Structure
+
+```
+docker/
+├── Dockerfile         # Optimized multi-stage Dockerfile
+├── .dockerignore      # Files excluded from build context
+└── scripts/           # Container helper scripts
+    ├── entrypoint.sh  # Container startup script
+    └── run.sh         # Script to replace docker-compose functionality
+```
+
+### Multi-stage Dockerfile
+
+The Docker implementation uses a multi-stage build approach with Python 3.13:
 
 ```dockerfile
-FROM python:3.11-slim as base
+# Stage 1: Builder
+FROM python:3.13-slim AS builder
 
-# Set environment variables
+# Set build-time environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Create app directory
+WORKDIR /build
+
+# Copy only what's needed for installation
+COPY pyproject.toml README.md ./
+
+# Install build dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc python3-dev \
+    && pip install --upgrade pip \
+    && pip install build wheel \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build wheel package
+RUN pip wheel --no-deps --wheel-dir /wheels -e .
+
+# Stage 2: Runtime
+FROM python:3.13-slim AS runtime
+
+# Set runtime environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Set working directory
 WORKDIR /app
 
-# Install dependencies
-RUN pip install uv
-COPY pyproject.toml .
-RUN uv pip install -e .
+# Copy wheel from builder stage
+COPY --from=builder /wheels /wheels
 
 # Copy application code
 COPY ./src ./src
 
-# Run with a non-root user
-RUN adduser --disabled-password --gecos "" appuser
+# Install dependencies and app
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir /wheels/* \
+    && rm -rf /wheels
+
+# Create non-root user for security
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
-# Expose the port
-EXPOSE 7500
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import http.client; conn = http.client.HTTPConnection('localhost:7501'); conn.request('GET', '/health'); response = conn.getresponse(); exit(0 if response.status == 200 else 1)"
 
-# Run the application
+# Expose the port
+EXPOSE 7501
+
+# Command to run the application
 CMD ["python", "-m", "src.main"]
 ```
 
-### Docker Compose
+### Helper Scripts Instead of Docker Compose
 
-```yaml
-services:
-  mcp-server:
-    build: .
-    ports:
-      - "7500:7500"
-    environment:
-      - API_KEY=${API_KEY}
-    volumes:
-      - ./src:/app/src
+For a single-container application, we've replaced Docker Compose with helper scripts that provide similar functionality with less complexity:
+
+```bash
+# Build the Docker image
+./docker/scripts/run.sh build
+
+# Run the server
+./docker/scripts/run.sh run
+
+# Run with hot reload for development
+./docker/scripts/run.sh dev
+
+# Run tests in container
+./docker/scripts/run.sh test
+
+# Clean up resources
+./docker/scripts/run.sh clean
 ```
+
+For more details, see [docker/README.md](docker/README.md).
 
 ## Getting Started
 
@@ -295,14 +350,27 @@ python -m src.main
 ### Build and Run with Docker
 
 ```bash
-docker build -t basic-mcp-server .
-docker run -p 7500:7500 -e API_KEY=your_api_key basic-mcp-server
+# Build the Docker image
+./docker/scripts/run.sh build
+
+# Run the server
+./docker/scripts/run.sh run
 ```
 
-Or with Docker Compose:
+For development with hot-reloading:
 
 ```bash
-docker compose up
+./docker/scripts/run.sh dev
+```
+
+Other useful commands:
+
+```bash
+# Run tests in container
+./docker/scripts/run.sh test
+
+# Clean up resources
+./docker/scripts/run.sh clean
 ```
 
 ## Testing Your MCP Server
@@ -407,6 +475,10 @@ If you encounter issues:
 ## Reference Implementation
 
 This project is based on the Model Context Protocol (MCP) Python SDK. For more details on the MCP specification and SDK, refer to the [original project README](https://github.com/modelcontextprotocol/python-sdk/blob/main/README.md).
+
+## FastMCP vs Low-Level Server
+
+This project has been migrated from using the low-level `Server` class to using the more ergonomic `FastMCP` approach. For details on the differences and benefits, see [readme_fastmcp.md](readme_fastmcp.md).
 
 ## Next Steps
 

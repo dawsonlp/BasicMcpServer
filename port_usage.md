@@ -6,7 +6,8 @@ This document keeps track of port usage in the BasicMcpServer project to avoid c
 
 | Port | Service | Description |
 |------|---------|-------------|
-| 7500 | MCP HTTP+SSE Server | Main MCP server with HTTP and SSE endpoints |
+| 7500 | MCP HTTP+SSE Server (low-level implementation) | Previous MCP server with HTTP and SSE endpoints |
+| 7501 | MCP HTTP+SSE Server (FastMCP implementation) | Current MCP server with HTTP and SSE endpoints |
 
 ## Port Range Allocation
 
