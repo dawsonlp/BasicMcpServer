@@ -104,14 +104,18 @@ To ensure credentials are never committed to version control:
 ```
 basic-mcp-server/
 ├── .gitignore            # Includes .env* patterns
-├── .dockerignore         # Also excludes .env files
 ├── .env.example          # Template with dummy values
-├── Dockerfile            # Container definition
-├── docker-compose.yml    # For local development
 ├── pyproject.toml        # Dependencies and metadata
 ├── README.md             # This file
 ├── readme_fastmcp.md     # Documentation on FastMCP vs low-level Server
 ├── design_decisions.md   # Project design decisions log
+├── docker/               # Docker containerization
+│   ├── Dockerfile        # Multi-stage build with Python 3.13
+│   ├── .dockerignore     # Files excluded from build context
+│   ├── README.md         # Docker-specific documentation
+│   └── scripts/          # Helper scripts
+│       ├── entrypoint.sh # Container startup script
+│       └── run.sh        # Script to replace docker-compose
 └── src/
     ├── __init__.py
     ├── main.py           # Entry point
@@ -221,53 +225,109 @@ if __name__ == "__main__":
 
 ## Docker Implementation
 
-### Dockerfile
+We've separated Docker containerization concerns from application functionality to improve maintainability and follow best practices:
+
+### Directory Structure
+
+```
+docker/
+├── Dockerfile         # Optimized multi-stage Dockerfile
+├── .dockerignore      # Files excluded from build context
+└── scripts/           # Container helper scripts
+    ├── entrypoint.sh  # Container startup script
+    └── run.sh         # Script to replace docker-compose functionality
+```
+
+### Multi-stage Dockerfile
+
+The Docker implementation uses a multi-stage build approach with Python 3.13:
 
 ```dockerfile
-FROM python:3.11-slim as base
+# Stage 1: Builder
+FROM python:3.13-slim AS builder
 
-# Set environment variables
+# Set build-time environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Create app directory
+WORKDIR /build
+
+# Copy only what's needed for installation
+COPY pyproject.toml README.md ./
+
+# Install build dependencies
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc python3-dev \
+    && pip install --upgrade pip \
+    && pip install build wheel \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build wheel package
+RUN pip wheel --no-deps --wheel-dir /wheels -e .
+
+# Stage 2: Runtime
+FROM python:3.13-slim AS runtime
+
+# Set runtime environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Set working directory
 WORKDIR /app
 
-# Install dependencies
-RUN pip install uv
-COPY pyproject.toml .
-RUN uv pip install -e .
+# Copy wheel from builder stage
+COPY --from=builder /wheels /wheels
 
 # Copy application code
 COPY ./src ./src
 
-# Run with a non-root user
-RUN adduser --disabled-password --gecos "" appuser
+# Install dependencies and app
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir /wheels/* \
+    && rm -rf /wheels
+
+# Create non-root user for security
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
-# Expose the port
-EXPOSE 7500
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import http.client; conn = http.client.HTTPConnection('localhost:7501'); conn.request('GET', '/health'); response = conn.getresponse(); exit(0 if response.status == 200 else 1)"
 
-# Run the application
+# Expose the port
+EXPOSE 7501
+
+# Command to run the application
 CMD ["python", "-m", "src.main"]
 ```
 
-### Docker Compose
+### Helper Scripts Instead of Docker Compose
 
-```yaml
-services:
-  mcp-server:
-    build: .
-    ports:
-      - "7500:7500"
-    environment:
-      - API_KEY=${API_KEY}
-      - OTHER_SECRET=${OTHER_SECRET}
-    volumes:
-      - ./src:/app/src
+For a single-container application, we've replaced Docker Compose with helper scripts that provide similar functionality with less complexity:
+
+```bash
+# Build the Docker image
+./docker/scripts/run.sh build
+
+# Run the server
+./docker/scripts/run.sh run
+
+# Run with hot reload for development
+./docker/scripts/run.sh dev
+
+# Run tests in container
+./docker/scripts/run.sh test
+
+# Clean up resources
+./docker/scripts/run.sh clean
 ```
+
+For more details, see [docker/README.md](docker/README.md).
 
 ## Getting Started
 
@@ -290,14 +350,27 @@ python -m src.main
 ### Build and Run with Docker
 
 ```bash
-docker build -t basic-mcp-server .
-docker run -p 7500:7500 -e API_KEY=your_api_key basic-mcp-server
+# Build the Docker image
+./docker/scripts/run.sh build
+
+# Run the server
+./docker/scripts/run.sh run
 ```
 
-Or with Docker Compose:
+For development with hot-reloading:
 
 ```bash
-docker compose up
+./docker/scripts/run.sh dev
+```
+
+Other useful commands:
+
+```bash
+# Run tests in container
+./docker/scripts/run.sh test
+
+# Clean up resources
+./docker/scripts/run.sh clean
 ```
 
 ## Testing Your MCP Server

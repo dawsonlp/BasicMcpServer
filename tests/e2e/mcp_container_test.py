@@ -72,9 +72,10 @@ class McpServerTest:
             # Get the project root directory (parent of tests directory)
             project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
             
-            # Build the image
+            # Build the image with the Dockerfile from the docker directory
             image, logs = self.docker_client.images.build(
                 path=project_dir,
+                dockerfile="docker/Dockerfile",
                 tag=IMAGE_NAME,
                 quiet=False
             )

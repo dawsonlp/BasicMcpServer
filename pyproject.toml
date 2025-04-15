@@ -7,7 +7,7 @@ name = "basic-mcp-server"
 version = "0.1.0"
 description = "A minimal MCP server with HTTP+SSE in a Docker container"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 license = {text = "MIT"}
 authors = [
     {name = "MCP User"}
