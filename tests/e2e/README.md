@@ -1,87 +1,73 @@
-# MCP Server End-to-End Tests
+# End-to-End Tests for BasicMcpServer
 
-This directory contains end-to-end tests for the MCP server deployed in a Docker container.
+This directory contains end-to-end tests for the BasicMcpServer implementation.
 
 ## Overview
 
-The tests verify that:
+The tests in this directory verify that the MCP server works correctly by:
+1. Testing the MCP protocol connections
+2. Testing tool discovery and execution
+3. Verifying responses from the example tool
 
-1. The MCP server can be built and deployed as a Docker container
-2. The server responds correctly to HTTP requests
-3. The MCP protocol works as expected
-4. The example tool functions correctly
+## Working Test Scripts
 
-## Requirements
+### 1. Direct Test
 
-- Python 3.10+
-- Docker
-- pip packages listed in `requirements.txt`
-
-## Installation
-
-Install the required dependencies:
+The primary recommended test script that uses the SDK directly:
 
 ```bash
-pip install -r requirements.txt
+python tests/e2e/direct_test.py
 ```
 
-## Running the Tests
+This test:
+- Connects to a running MCP server
+- Lists available tools, resources, and prompts
+- Calls the example tool and validates its response
 
-From this directory, run:
+Options:
+- `--host` - Server hostname (default: localhost)
+- `--port` - Server port (default: 7501)
+- `--input` - Input text for example tool test
+
+### 2. Running Server Test
+
+A simplified test script that uses the same reliable pattern:
 
 ```bash
-python mcp_container_test.py
+python tests/e2e/running_server_test.py
 ```
 
-The test script will:
+This is optimized for testing against a server that's already running.
 
-1. Build a Docker image from the project
-2. Start a container from that image
-3. Test HTTP connectivity to the server
-4. Test the MCP protocol by connecting and listing tools
-5. Test the example tool functionality
-6. Clean up resources (stop and remove container)
+## Implementation Details
 
-## Test Output
+### Key Pattern for Success
 
-The test will output logs showing the progress and results of each test stage:
+The reliable pattern for testing MCP servers is using nested context managers directly with the SDK:
 
-```
-2025-04-15 10:45:00 - root - INFO - Building Docker image...
-2025-04-15 10:45:30 - root - INFO - Built image: sha256:1234...
-2025-04-15 10:45:30 - root - INFO - Starting container...
-2025-04-15 10:45:35 - root - INFO - Started container: abcd1234...
-...
-2025-04-15 10:46:00 - root - INFO - Test Results:
-2025-04-15 10:46:00 - root - INFO -   build       : ✅ PASS
-2025-04-15 10:46:00 - root - INFO -   start       : ✅ PASS
-2025-04-15 10:46:00 - root - INFO -   connectivity: ✅ PASS
-2025-04-15 10:46:00 - root - INFO -   protocol    : ✅ PASS
-2025-04-15 10:46:00 - root - INFO -   tool        : ✅ PASS
-2025-04-15 10:46:00 - root - INFO - Overall Result: ✅ PASS
+```python
+async with sse_client(sse_url) as streams:
+    async with ClientSession(streams[0], streams[1]) as session:
+        await session.initialize()
+        # Test operations here
 ```
 
-The exit code will be 0 for success and 1 for failure.
+This ensures proper context management and cleanup of async resources.
 
-## Components
+## Best Practices
 
-- `mcp_container_test.py`: Main test script
-- `mcp_client.py`: MCP client implementation for testing
-- `requirements.txt`: Dependencies for the tests
+1. **Direct SDK Usage**: Use the SDK's classes directly rather than building abstractions
 
-## Adding New Tests
+2. **Context Managers**: Always use proper context managers for reliable connection cleanup
 
-To add new tests for additional tools:
+3. **Testing Flow**: For reliable testing:
+   - Start the server (manually or in a separate process)
+   - Run the tests against the running server
+   - This separation avoids issues with async operations and container management
 
-1. Add a new test method in `McpServerTest` class
-2. Add the test result to the `test_results` dictionary
-3. Call the test method from `run_async_tests()` method
+## Dependencies
 
-## Troubleshooting
-
-If tests fail, check:
-
-1. Docker is running and has sufficient resources
-2. Port 7500 is available and not used by another service
-3. The project can be built successfully
-4. The MCP server starts correctly in the container (check logs)
+Required dependencies are listed in `requirements.txt` and include:
+- The MCP SDK
+- Requests (for HTTP connectivity tests)
+- Other supporting packages

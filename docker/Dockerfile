@@ -12,6 +12,7 @@ WORKDIR /build
 
 # Copy only what's needed for installation
 COPY pyproject.toml README.md ./
+COPY ./src ./src
 
 # Install build dependencies
 RUN apt-get update \

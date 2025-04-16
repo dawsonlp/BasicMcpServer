@@ -4,7 +4,7 @@
 # Build the Docker image
 function build() {
   echo "Building Docker image..."
-  docker build -t basic-mcp-server:latest -f docker/Dockerfile .
+  docker build --load -t basic-mcp-server:latest -f docker/Dockerfile .
 }
 
 # Run the container
