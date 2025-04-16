@@ -1,492 +1,75 @@
-# BasicMcpServer
+# MCP Server Implementation Resources
 
-A minimal, production-ready MCP (Model Context Protocol) server implementation exposed via HTTP+SSE in a Docker container.
+This repository contains resources for implementing MCP (Model Context Protocol) servers, specifically for integrating with external APIs and services.
 
-## Overview
+## Contents
 
-This project implements the simplest possible [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that can be deployed in a Docker container and exposed via HTTP with Server-Sent Events (SSE). It follows best practices for environment variable management to ensure credentials are never committed to version control.
-
-The server is designed to be:
-- **Simple**: Minimal boilerplate and dependencies
-- **Secure**: Proper credential management out of the box
-- **Containerized**: Ready for Docker deployment
-- **Performant**: Using FastMCP and Uvicorn for high-performance HTTP serving
-
-## Architecture
-
-### Python Packages
-
-The project uses the following key packages:
-
-1. **MCP SDK**: The Python implementation of the Model Context Protocol
-   - `mcp`: Core MCP functionality
-   - `mcp.server.fastmcp`: High-level FastMCP framework
-
-2. **Web Framework**: FastMCP's built-in ASGI support
-   - Leverages Starlette under the hood
-   - Simplifies server setup and routing
-   - Excellent performance characteristics
-
-3. **ASGI Server**: Uvicorn
-   - High-performance ASGI server
-   - Works seamlessly with FastMCP
-   - Well-suited for containerized environments
-
-4. **SSE Implementation**: MCP SDK's built-in SSE transport
-   - Integrated with FastMCP
-   - Provides Server-Sent Events functionality
-
-5. **Configuration Management**: pydantic-settings
-   - Type-safe environment variable handling
-   - Validation at startup
-
-6. **HTTP Client** (if needed): httpx
-   - Async-compatible HTTP client for outbound requests
-
-### Dependencies
-
-These will be specified in `pyproject.toml`:
-
-```toml
-[project]
-name = "basic-mcp-server"
-version = "0.1.0"
-description = "A minimal MCP server with HTTP+SSE in a Docker container"
-readme = "README.md"
-requires-python = ">=3.10"
-dependencies = [
-    "mcp>=1.6.0",
-    "uvicorn>=0.34.1",
-    "pydantic-settings>=2.8.1",
-    "httpx>=0.28.1",
-]
-```
-
-## Credential Management & Security
-
-To ensure credentials are never committed to version control:
-
-### Local Development
-
-1. Create a `.env` file locally with your credentials:
-   ```
-   API_KEY=your_api_key_here
-   OTHER_SECRET=other_secret_here
-   ```
-
-2. This file is automatically excluded from Git via the `.gitignore` file.
-
-3. Use the included `.env.example` as a template for required variables.
-
-### Docker Deployment
-
-1. **Never** mount your `.env` file directly into the container.
-
-2. Pass environment variables at runtime:
-   ```bash
-   docker run -e API_KEY=your_api_key_here -e OTHER_SECRET=other_secret_here basic-mcp-server
-   ```
-
-3. Or use Docker Compose with environment variables:
-   ```yaml
-   services:
-     mcp-server:
-       build: .
-       environment:
-         - API_KEY=${API_KEY}
-         - OTHER_SECRET=${OTHER_SECRET}
-   ```
-
-4. For production, consider using Docker Swarm secrets or Kubernetes secrets.
-
-## Project Structure
-
-```
-basic-mcp-server/
-├── .gitignore            # Includes .env* patterns
-├── .env.example          # Template with dummy values
-├── pyproject.toml        # Dependencies and metadata
-├── README.md             # This file
-├── readme_fastmcp.md     # Documentation on FastMCP vs low-level Server
-├── design_decisions.md   # Project design decisions log
-├── docker/               # Docker containerization
-│   ├── Dockerfile        # Multi-stage build with Python 3.13
-│   ├── .dockerignore     # Files excluded from build context
-│   ├── README.md         # Docker-specific documentation
-│   └── scripts/          # Helper scripts
-│       ├── entrypoint.sh # Container startup script
-│       └── run.sh        # Script to replace docker-compose
-└── src/
-    ├── __init__.py
-    ├── main.py           # Entry point
-    ├── config.py         # Environment & configuration management
-    ├── server.py         # MCP server implementation using FastMCP
-    └── tools/            # Tool implementations (alternative organization)
-        ├── __init__.py
-        └── example.py    # Example tool
-```
-
-## Implementation Details
-
-### Configuration (`src/config.py`)
-
-```python
-from pydantic_settings import BaseSettings, SettingsConfigDict
-
-class Settings(BaseSettings):
-    # Server settings
-    host: str = "0.0.0.0"
-    port: int = 7500
-    
-    # Add your API keys and credentials here
-    api_key: str
-    other_secret: str = ""  # Optional, has default empty value
-    
-    # Configure settings to load from .env file
-    model_config = SettingsConfigDict(
-        env_file=".env", 
-        env_file_encoding="utf-8",
-        case_sensitive=False
-    )
-
-# Create a settings instance for importing in other modules
-settings = Settings()
-```
-
-### Server Implementation (`src/server.py`)
-
-```python
-from mcp.server.fastmcp import FastMCP
-
-def create_mcp_server():
-    """
-    Create and configure an MCP server instance using FastMCP.
-    
-    Returns:
-        FastMCP: A configured FastMCP server instance
-    """
-    # Create a FastMCP server instance with a unique name
-    mcp = FastMCP("basic-mcp-server")
-    
-    # Add an example tool using the simpler decorator syntax
-    @mcp.tool()
-    def example(input: str) -> str:
-        """An example tool that processes input text"""
-        return f"Processed: {input}"
-    
-    # You can add more tools, resources, and prompts here
-    
-    return mcp
-```
-
-### Main Entry Point (`src/main.py`)
-
-```python
-import logging
-import sys
-
-from .config import settings
-from .server import create_mcp_server
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)]
-)
-logger = logging.getLogger(__name__)
-
-def start():
-    """Start the MCP server using FastMCP's built-in functionality."""
-    logger.info(f"Starting MCP server on {settings.host}:{settings.port}")
-    
-    # Create the MCP server
-    mcp_server = create_mcp_server()
-    
-    # Configure server settings
-    mcp_server.settings.host = settings.host
-    mcp_server.settings.port = settings.port
-    mcp_server.settings.debug = True
-    mcp_server.settings.log_level = "INFO"
-    
-    # Run the server with SSE transport
-    mcp_server.run("sse")
-
-# Alternative approach using the FastMCP ASGI application
-def create_app():
-    """Create an ASGI application for use with an external ASGI server."""
-    mcp_server = create_mcp_server()
-    mcp_server.settings.debug = True
-    return mcp_server.sse_app()
-
-if __name__ == "__main__":
-    start()
-```
-
-## Docker Implementation
-
-We've separated Docker containerization concerns from application functionality to improve maintainability and follow best practices:
-
-### Directory Structure
-
-```
-docker/
-├── Dockerfile         # Optimized multi-stage Dockerfile
-├── .dockerignore      # Files excluded from build context
-└── scripts/           # Container helper scripts
-    ├── entrypoint.sh  # Container startup script
-    └── run.sh         # Script to replace docker-compose functionality
-```
-
-### Multi-stage Dockerfile
-
-The Docker implementation uses a multi-stage build approach with Python 3.13:
-
-```dockerfile
-# Stage 1: Builder
-FROM python:3.13-slim AS builder
-
-# Set build-time environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
-
-# Create app directory
-WORKDIR /build
-
-# Copy only what's needed for installation
-COPY pyproject.toml README.md ./
-
-# Install build dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends gcc python3-dev \
-    && pip install --upgrade pip \
-    && pip install build wheel \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
-# Build wheel package
-RUN pip wheel --no-deps --wheel-dir /wheels -e .
-
-# Stage 2: Runtime
-FROM python:3.13-slim AS runtime
-
-# Set runtime environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
-
-# Set working directory
-WORKDIR /app
-
-# Copy wheel from builder stage
-COPY --from=builder /wheels /wheels
-
-# Copy application code
-COPY ./src ./src
-
-# Install dependencies and app
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir /wheels/* \
-    && rm -rf /wheels
-
-# Create non-root user for security
-RUN adduser --disabled-password --gecos "" appuser \
-    && chown -R appuser:appuser /app
-USER appuser
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import http.client; conn = http.client.HTTPConnection('localhost:7501'); conn.request('GET', '/health'); response = conn.getresponse(); exit(0 if response.status == 200 else 1)"
-
-# Expose the port
-EXPOSE 7501
-
-# Command to run the application
-CMD ["python", "-m", "src.main"]
-```
-
-### Helper Scripts Instead of Docker Compose
-
-For a single-container application, we've replaced Docker Compose with helper scripts that provide similar functionality with less complexity:
-
-```bash
-# Build the Docker image
-./docker/scripts/run.sh build
-
-# Run the server
-./docker/scripts/run.sh run
-
-# Run with hot reload for development
-./docker/scripts/run.sh dev
-
-# Run tests in container
-./docker/scripts/run.sh test
-
-# Clean up resources
-./docker/scripts/run.sh clean
-```
-
-For more details, see [docker/README.md](docker/README.md).
+1. **`setup_jira_mcp_server.sh`**: An automated script that generates a complete Jira MCP server project
+2. **`mcp_server_implementation_guide.md`**: A comprehensive guide to understanding and implementing MCP servers
 
 ## Getting Started
 
-### Setup
+### Option 1: Create a Jira MCP Server
 
-1. Clone this repository
-2. Copy `.env.example` to `.env` and update with your credentials
-3. Install dependencies:
+To create a complete Jira MCP server project structure:
+
+1. Make the setup script executable (already done):
    ```bash
-   pip install uv
-   uv pip install -e .
+   chmod +x setup_jira_mcp_server.sh
    ```
 
-### Run Locally
-
-```bash
-python -m src.main
-```
-
-### Build and Run with Docker
-
-```bash
-# Build the Docker image
-./docker/scripts/run.sh build
-
-# Run the server
-./docker/scripts/run.sh run
-```
-
-For development with hot-reloading:
-
-```bash
-./docker/scripts/run.sh dev
-```
-
-Other useful commands:
-
-```bash
-# Run tests in container
-./docker/scripts/run.sh test
-
-# Clean up resources
-./docker/scripts/run.sh clean
-```
-
-## Testing Your MCP Server
-
-### Manual Testing
-
-#### Using the MCP SDK CLI
-
-If you have the MCP SDK CLI installed, you can use it to test your server:
-
-```bash
-mcp dev http://localhost:7500/sse
-```
-
-#### Using Claude
-
-To test with Claude:
-
-1. Update Claude's MCP settings file with:
-   ```json
-   {
-     "mcpServers": {
-       "basic-mcp-server": {
-         "url": "http://localhost:7500/sse",
-         "disabled": false,
-         "autoApprove": ["example"]
-       }
-     }
-   }
-   ```
-
-2. In Claude, use the tool:
-   ```
-   <use_mcp_tool>
-   <server_name>basic-mcp-server</server_name>
-   <tool_name>example</tool_name>
-   <arguments>
-   {
-     "input": "Hello MCP World!"
-   }
-   </arguments>
-   </use_mcp_tool>
-   ```
-
-3. You should receive: "Processed: Hello MCP World!"
-
-#### Using HTTP Requests
-
-You can also test your server with HTTP requests:
-
-1. Connect to the SSE endpoint:
+2. Run the script:
    ```bash
-   curl -N http://localhost:7500/sse
+   ./setup_jira_mcp_server.sh
    ```
 
-2. In another terminal, send a message to the server:
-   ```bash
-   curl -X POST -H "Content-Type: application/json" -d '{"type":"initialize","requestId":"test-123","content":{"clientInfo":{"clientType":"test","clientVersion":"1.0.0"},"capabilities":{"receiveText":true,"receiveImage":false}}}' http://localhost:7500/messages/?session_id=test-session-id
-   ```
+3. Follow the instructions that appear after the script runs:
+   - Navigate to the newly created project directory
+   - Configure your Jira credentials in the `.env` file
+   - Build and run the Docker container
 
-### Automated End-to-End Testing
+This will create a fully functional MCP server that integrates with Jira, allowing AI assistants to interact with your Jira instance through the MCP protocol.
 
-We provide automated tests that verify the MCP server works correctly when deployed as a container:
+### Option 2: Understand MCP Server Implementation
 
-1. Install test dependencies:
-   ```bash
-   cd tests/e2e
-   pip install -r requirements.txt
-   ```
+If you want to learn more about how MCP servers work and how to implement them:
 
-2. Run the test:
-   ```bash
-   python mcp_container_test.py
-   ```
+1. Read the comprehensive guide in `mcp_server_implementation_guide.md`
+2. The guide covers:
+   - Project structure and setup
+   - Implementing MCP servers with FastMCP
+   - Docker containerization
+   - Testing strategies
+   - Deployment options
+   - Best practices
 
-The test script will:
-- Build and start a Docker container with the MCP server
-- Test HTTP connectivity to the server
-- Test the MCP protocol (initialization, tool listing)
-- Test the example tool functionality
-- Clean up all resources when done
+## Customizing for Other Services
 
-See `tests/e2e/README.md` for more details on the end-to-end tests.
+The Jira MCP server can be used as a template for creating MCP servers for other services:
 
-### Troubleshooting
+1. Generate the Jira MCP server project using the setup script
+2. Replace the Jira-specific code with code for your target service:
+   - Modify `src/services/` to implement your service integration
+   - Update `src/server.py` to define tools and resources for your service
+   - Update `src/config.py` to include the necessary configuration variables
+   - Update `.env.example` with appropriate environment variables
 
-If you encounter issues:
+## What is MCP?
 
-1. **Connection refused:**
-   - Ensure the container is running: `docker ps | grep mcp-server`
-   - Verify port mapping: `docker port [container-id]`
+The Model Context Protocol (MCP) is a standard for communication between AI assistants and external services. It enables AI assistants to:
 
-2. **"Not connected" error in Claude:**
-   - Ensure the URL includes the `/sse` path: `http://localhost:7500/sse`
-   - Check container logs: `docker logs [container-id]`
-   - Try restarting the VSCode window
+- Discover and call tools that perform actions
+- Access resources that provide information
+- Interact with external systems through a standardized interface
 
-3. **Timeout or no response:**
-   - Examine server logs for errors
-   - Check if another service is using port 7500
+By implementing an MCP server, you can extend the capabilities of AI assistants by giving them access to your services and data.
 
-## Reference Implementation
+## Prerequisites
 
-This project is based on the Model Context Protocol (MCP) Python SDK. For more details on the MCP specification and SDK, refer to the [original project README](https://github.com/modelcontextprotocol/python-sdk/blob/main/README.md).
+- Python 3.11 or higher
+- Docker (for containerized deployment)
+- Service-specific API credentials
 
-## FastMCP vs Low-Level Server
+## License
 
-This project has been migrated from using the low-level `Server` class to using the more ergonomic `FastMCP` approach. For details on the differences and benefits, see [readme_fastmcp.md](readme_fastmcp.md).
-
-## Next Steps
-
-1. Add more tools to make your MCP server useful
-2. Implement authentication for the HTTP endpoints
-3. Add monitoring and logging
-4. Deploy to your preferred cloud provider
-
----
-
-This implementation provides a minimal but production-ready MCP server. You can extend it by adding more tools, resources, or custom functionality as needed.
+This project is provided under the MIT License.
