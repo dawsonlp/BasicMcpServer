@@ -1,15 +1,51 @@
-# MCP Server Implementation Resources
+# BasicMcpServer: MCP Server Implementation Resources
 
-This repository contains resources for implementing MCP (Model Context Protocol) servers, specifically for integrating with external APIs and services.
+This repository serves three primary purposes:
+
+1. **Simple Example MCP Server**: A basic reference implementation that you can clone and modify for your own needs
+2. **Docker Containerization Demo**: Shows how to set up an MCP server in Docker with end-to-end testing
+3. **Setup Automation**: Provides a script to generate more complex MCP servers (like the Jira integration)
+
+## MCP References
+
+Key resources that informed this implementation:
+
+- [MCP Documentation](https://modelcontextprotocol.io/introduction) - Official documentation and introduction to the Model Context Protocol
+- [Python SDK Repository](https://github.com/modelcontextprotocol/python-sdk) - The official Python SDK for MCP
+- [MCP HTTP Client Example](https://github.com/slavashvets/mcp-http-client-example) - Reference implementation that helped develop the test code in this repository
 
 ## Contents
 
-1. **`setup_jira_mcp_server.sh`**: An automated script that generates a complete Jira MCP server project
-2. **`mcp_server_implementation_guide.md`**: A comprehensive guide to understanding and implementing MCP servers
+1. **Base MCP Server**: Simple reference implementation with a basic tool
+2. **Docker Configuration**: Containerization setup with multi-stage builds
+3. **End-to-End Tests**: Demonstration of proper MCP server testing
+4. **`setup_jira_mcp_server.sh`**: Script for generating a Jira-integrated MCP server
+5. **`mcp_server_implementation_guide.md`**: Comprehensive guide to MCP server implementation
 
 ## Getting Started
 
-### Option 1: Create a Jira MCP Server
+### Option 1: Use the Basic MCP Server as a Template
+
+The simplest approach is to clone this repository and modify it for your needs:
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/BasicMcpServer.git my-mcp-server
+cd my-mcp-server
+
+# Modify src/server.py to implement your custom tools and resources
+# Update config.py with your required environment variables
+# Run with Docker or directly with Python
+```
+
+### Option 2: Learn Docker-Based MCP Server Implementation
+
+Study the Docker configuration and end-to-end tests to understand:
+- Multi-stage Docker builds for efficient images
+- Container configuration best practices
+- Testing patterns for MCP servers
+
+### Option 3: Generate a Jira MCP Server
 
 To create a complete Jira MCP server project structure:
 
@@ -45,9 +81,9 @@ The script automatically:
 - Creates a GitHub repository and pushes the code (if GitHub CLI is installed and authenticated)
 - Makes all necessary scripts executable
 
-This will create a fully functional MCP server that integrates with Jira, allowing AI assistants to interact with your Jira instance through the MCP protocol.
+This will create a more complex MCP server example that integrates with Jira, allowing AI assistants to interact with your Jira instance through the MCP protocol.
 
-### Option 2: Understand MCP Server Implementation
+### Option 4: Understand MCP Server Implementation
 
 If you want to learn more about how MCP servers work and how to implement them:
 
@@ -73,13 +109,13 @@ The Jira MCP server can be used as a template for creating MCP servers for other
 
 ## What is MCP?
 
-The Model Context Protocol (MCP) is a standard for communication between AI assistants and external services. It enables AI assistants to:
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) is a standard for communication between AI assistants and external services. It enables AI assistants to:
 
 - Discover and call tools that perform actions
 - Access resources that provide information
 - Interact with external systems through a standardized interface
 
-By implementing an MCP server, you can extend the capabilities of AI assistants by giving them access to your services and data.
+By implementing an MCP server, you can extend the capabilities of AI assistants by giving them access to your services and data. This repository uses the [official Python SDK](https://github.com/modelcontextprotocol/python-sdk) and follows best practices for MCP server implementation.
 
 ## Prerequisites
 

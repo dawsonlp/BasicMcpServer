@@ -2,6 +2,14 @@
 
 This guide provides detailed instructions on how to implement a Model Context Protocol (MCP) server that can integrate with external APIs and services. The examples focus on creating a Jira MCP server, but the patterns can be applied to any API or service integration.
 
+## Key References
+
+This guide builds upon these important resources:
+
+- [Model Context Protocol Documentation](https://modelcontextprotocol.io/introduction) - The official MCP documentation which provides the foundation for understanding the protocol
+- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) - The official SDK used in this implementation
+- [MCP HTTP Client Example](https://github.com/slavashvets/mcp-http-client-example) - A reference implementation that informed the testing approach
+
 ## Table of Contents
 
 1. [Introduction to MCP Servers](#introduction-to-mcp-servers)
@@ -19,7 +27,7 @@ This guide provides detailed instructions on how to implement a Model Context Pr
 
 ## Introduction to MCP Servers
 
-The Model Context Protocol (MCP) is a standard for communication between AI assistants and external services. An MCP server exposes capabilities as "tools" and "resources" that can be discovered and used by AI assistants, allowing them to perform actions and access data that would otherwise be unavailable to them.
+The [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) is a standard for communication between AI assistants and external services. An MCP server exposes capabilities as "tools" and "resources" that can be discovered and used by AI assistants, allowing them to perform actions and access data that would otherwise be unavailable to them.
 
 Key concepts:
 - **Tools**: Functions that perform actions or return data
