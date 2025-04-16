@@ -1,16 +1,87 @@
 #!/bin/bash
 set -e
 
-# Configuration
-PROJECT_NAME="jira-mcp-server"
-BASE_DIR="$(pwd)/${PROJECT_NAME}"
+# Default values
+DEFAULT_PROJECT_NAME="jira-mcp-server"
+INIT_GIT=true
+CREATE_GITHUB_REPO=true
 
 # Colors for console output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+YELLOW='\033[0;33m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Parse command line arguments
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    -n|--name)
+      PROJECT_NAME="$2"
+      shift 2
+      ;;
+    --no-git)
+      INIT_GIT=false
+      shift
+      ;;
+    --no-github)
+      CREATE_GITHUB_REPO=false
+      shift
+      ;;
+    -h|--help)
+      echo "Usage: $0 [OPTIONS]"
+      echo ""
+      echo "Options:"
+      echo "  -n, --name NAME     Specify project name (default: ${DEFAULT_PROJECT_NAME})"
+      echo "  --no-git            Skip Git repository initialization"
+      echo "  --no-github         Skip GitHub repository creation"
+      echo "  -h, --help          Show this help message"
+      exit 0
+      ;;
+    *)
+      echo -e "${RED}Unknown option: $1${NC}" >&2
+      echo "Use --help to see available options"
+      exit 1
+      ;;
+  esac
+done
+
+# If PROJECT_NAME is not set, use the default
+if [ -z "${PROJECT_NAME}" ]; then
+  PROJECT_NAME="${DEFAULT_PROJECT_NAME}"
+fi
+
+# Set the base directory
+BASE_DIR="$(pwd)/${PROJECT_NAME}"
+
 echo -e "${BLUE}Creating Jira MCP Server in ${BASE_DIR}${NC}"
+
+# Check if the directory already exists
+if [ -d "${BASE_DIR}" ]; then
+  echo -e "${YELLOW}Warning: Directory ${BASE_DIR} already exists${NC}"
+  read -p "Do you want to continue and overwrite existing files? (y/n) " -n 1 -r
+  echo ""
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo -e "${RED}Setup cancelled${NC}"
+    exit 1
+  fi
+fi
+
+# Check for required commands if creating GitHub repo
+if [ "$CREATE_GITHUB_REPO" = true ]; then
+  if ! command -v gh &> /dev/null; then
+    echo -e "${YELLOW}Warning: GitHub CLI (gh) not found. GitHub repository creation will be skipped.${NC}"
+    echo "To install GitHub CLI, visit: https://cli.github.com/manual/installation"
+    CREATE_GITHUB_REPO=false
+  else
+    # Check if user is authenticated with GitHub CLI
+    if ! gh auth status &> /dev/null; then
+      echo -e "${YELLOW}Warning: Not authenticated with GitHub CLI. GitHub repository creation will be skipped.${NC}"
+      echo "To authenticate, run: gh auth login"
+      CREATE_GITHUB_REPO=false
+    fi
+  fi
+fi
 
 # Create project directory structure
 mkdir -p "${BASE_DIR}"
@@ -805,7 +876,7 @@ EOL
 # Make run script executable
 chmod +x "${BASE_DIR}/docker/scripts/run.sh"
 
-# Create test script
+# Create test script with executable permissions
 cat > "${BASE_DIR}/tests/e2e/direct_test.py" << 'EOL'
 #!/usr/bin/env python3
 """
@@ -990,5 +1061,29 @@ echo ""
 echo -e "${BLUE}Testing:${NC}"
 echo "Run the test script after starting the server: python tests/e2e/direct_test.py"
 
-# Make script executable
+# Make scripts executable
 chmod +x "${BASE_DIR}/docker/scripts/run.sh"
+chmod +x "${BASE_DIR}/tests/e2e/direct_test.py"
+
+# Initialize Git repository if requested
+if [ "$INIT_GIT" = true ]; then
+  echo -e "${BLUE}Initializing Git repository${NC}"
+  cd "${BASE_DIR}"
+  git init
+  git add .
+  git commit -m "Initial commit: Jira MCP server project scaffold"
+  
+  # Create GitHub repository if requested
+  if [ "$CREATE_GITHUB_REPO" = true ]; then
+    echo -e "${BLUE}Creating GitHub repository${NC}"
+    gh repo create "${PROJECT_NAME}" --private --source=. --remote=origin --push
+    
+    if [ $? -eq 0 ]; then
+      echo -e "${GREEN}GitHub repository created and code pushed${NC}"
+    else
+      echo -e "${YELLOW}Failed to create GitHub repository. You can create it manually later.${NC}"
+    fi
+  fi
+  
+  cd - > /dev/null # Return to original directory
+fi

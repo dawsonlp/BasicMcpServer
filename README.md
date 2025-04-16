@@ -23,10 +23,27 @@ To create a complete Jira MCP server project structure:
    ./setup_jira_mcp_server.sh
    ```
 
+   **Command-line options:**
+   ```
+   Usage: ./setup_jira_mcp_server.sh [OPTIONS]
+
+   Options:
+     -n, --name NAME     Specify project name (default: jira-mcp-server)
+     --no-git            Skip Git repository initialization
+     --no-github         Skip GitHub repository creation
+     -h, --help          Show help message
+   ```
+
 3. Follow the instructions that appear after the script runs:
    - Navigate to the newly created project directory
    - Configure your Jira credentials in the `.env` file
    - Build and run the Docker container
+
+The script automatically:
+- Creates the complete project structure with all necessary files
+- Initializes a Git repository (unless `--no-git` is specified)
+- Creates a GitHub repository and pushes the code (if GitHub CLI is installed and authenticated)
+- Makes all necessary scripts executable
 
 This will create a fully functional MCP server that integrates with Jira, allowing AI assistants to interact with your Jira instance through the MCP protocol.
 
