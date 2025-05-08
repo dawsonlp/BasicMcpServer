@@ -1,0 +1,15 @@
+topversion: '3.8'
+
+services:
+  basic-mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    volumes:
+      - ../:/app
+    ports:
+      - "${SERVER_PORT:-1234}:1234"
+    environment:
+      - SERVER_PORT=1234
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    restart: unless-stopped
